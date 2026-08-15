@@ -53,6 +53,42 @@ export function ClaimForm({
 
   /*
    * ═════════════════════════════════════════
+   * 切档 / 搜域名 之后，必须让选中项重新落到可见列表里
+   * ═════════════════════════════════════════
+   *
+   * 原来 `picked` 只在初始化时取 `domains[0]`，之后切档、搜域名都不会动它。
+   * 于是：当前选中的域名一旦被过滤掉，界面上**没有任何一项高亮**，
+   * 但底部「花 X 分申领」按钮仍指向那个看不见的域名 ——
+   * 用户直接点申领 → 申领到一个他根本没看到的域名 → 误扣分的真实风险
+   * （最贵一档 400 分 ≈ 三周日常参与）。
+   *
+   * 现在每次切档 / 改动搜索词，都重新算一遍过滤结果：
+   * 旧选中项还看得见就保留它；看不见就落到过滤结果的第一个（一定在可见区）。
+   * 这样按钮永远只能申领一个**界面上正高亮**的域名。
+   */
+  const syncPickedToVisible = (tf: string, q: string) => {
+    const next = domains.filter(
+      (d) =>
+        (tf === "all" || d.tier === tf) &&
+        (q.trim() === "" || d.domain.includes(q.trim().toLowerCase())),
+    );
+    if (!next.some((d) => d.domain === picked)) {
+      setPicked(next[0]?.domain ?? "");
+    }
+  };
+
+  const onTierFilter = (t: string) => {
+    setTierFilter(t);
+    syncPickedToVisible(t, query);
+  };
+
+  const onQuery = (v: string) => {
+    setQuery(v);
+    syncPickedToVisible(tierFilter, v);
+  };
+
+  /*
+   * ═════════════════════════════════════════
    * 八十五个域名平铺成一列单选，等于没有列表
    * ═════════════════════════════════════════
    *
@@ -127,7 +163,7 @@ export function ClaimForm({
       <div className="mt-3 flex flex-wrap gap-x-1.5 gap-y-3.5">
         <button
           className={buttonClass(tierFilter === "all" ? "primary" : "quiet", "sm")}
-          onClick={() => setTierFilter("all")}
+          onClick={() => onTierFilter("all")}
         >
           全部 {domains.length}
         </button>
@@ -138,7 +174,7 @@ export function ClaimForm({
             <button
               key={t}
               className={buttonClass(tierFilter === t ? "primary" : "quiet", "sm")}
-              onClick={() => setTierFilter(t)}
+              onClick={() => onTierFilter(t)}
               title={locked ? `这一档要 L${sample.minLevel}，你现在 L${level}` : undefined}
             >
               {t.toUpperCase()} 档 {sample.rent} 分
@@ -153,7 +189,7 @@ export function ClaimForm({
           className="t-body mt-2 min-h-11 w-full rounded-[var(--radius-control)] bg-[var(--fill)] px-3 py-2"
           placeholder={`在 ${domains.length} 个域名里搜`}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => onQuery(e.target.value)}
           aria-label="搜索域名"
         />
       )}
@@ -222,7 +258,7 @@ export function ClaimForm({
         <button
           className={buttonClass("primary")}
           onClick={submit}
-          disabled={pending || full || !local.trim()}
+          disabled={pending || full || !local.trim() || !target}
         >
           {pending ? "申领中…" : target ? `花 ${target.rent} 分申领` : "申领"}
         </button>
